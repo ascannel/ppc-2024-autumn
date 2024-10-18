@@ -39,9 +39,7 @@ class TestMPITaskParallel : public ppc::core::Task {
 
  private:
   std::string input_;
-  std::vector<std::string> words;
   int wordCount{};
-  int localWordCount{};
   boost::mpi::communicator world;
 };
 

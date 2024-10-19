@@ -4,6 +4,7 @@
 #include <boost/mpi/collectives.hpp>
 #include <boost/mpi/communicator.hpp>
 #include <boost/mpi/environment.hpp>
+#include <boost/serialization/string.hpp>
 #include <cstring>
 #include <iterator>
 #include <sstream>
@@ -14,6 +15,7 @@
 namespace lopatin_i_count_words_mpi {
 
 int countWords(const std::string& str);
+int divideWords(const std::vector<std::string>& words, int rank, int size);
 std::string generateLongString(int n);
 
 class TestMPITaskSequential : public ppc::core::Task {
@@ -26,7 +28,7 @@ class TestMPITaskSequential : public ppc::core::Task {
 
  private:
   std::string input_;
-  int wordCount{};
+  int word_count{};
 };
 
 class TestMPITaskParallel : public ppc::core::Task {
@@ -39,7 +41,7 @@ class TestMPITaskParallel : public ppc::core::Task {
 
  private:
   std::string input_;
-  int wordCount{};
+  int word_count{};
   boost::mpi::communicator world;
 };
 

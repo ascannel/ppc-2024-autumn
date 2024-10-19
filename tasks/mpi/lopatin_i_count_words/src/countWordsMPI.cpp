@@ -7,6 +7,25 @@ int countWords(const std::string& str) {
   return std::distance(std::istream_iterator<std::string>(iss), std::istream_iterator<std::string>());
 }
 
+int divideWords(const std::vector<std::string>& words, int rank, int size) {
+  int total_words = words.size();
+  int local_words_count = total_words / size;
+  int remainder = total_words % size;
+
+  int start = rank * local_words_count + std::min(rank, remainder);
+  int end = start + local_words_count + (rank < remainder ? 1 : 0);
+
+  if (start >= total_words) {
+    return 0;
+  }
+
+  if (end > total_words) {
+    end = total_words;
+  }
+
+  return end - start;
+}
+
 std::string generateLongString(int n) {
   std::string testData;
   std::string testString = "This is a long sentence for performance testing of the word count algorithm using MPI. ";
@@ -19,7 +38,7 @@ std::string generateLongString(int n) {
 bool TestMPITaskSequential::pre_processing() {
   internal_order_test();
   input_ = std::string(reinterpret_cast<char*>(taskData->inputs[0]), taskData->inputs_count[0]);
-  wordCount = 0;
+  word_count = 0;
   return true;
 }
 
@@ -30,23 +49,22 @@ bool TestMPITaskSequential::validation() {
 
 bool TestMPITaskSequential::run() {
   internal_order_test();
-  wordCount = countWords(input_);
+  word_count = countWords(input_);
   return true;
 }
 
 bool TestMPITaskSequential::post_processing() {
   internal_order_test();
-  reinterpret_cast<int*>(taskData->outputs[0])[0] = wordCount;
+  reinterpret_cast<int*>(taskData->outputs[0])[0] = word_count;
   return true;
 }
 
 bool TestMPITaskParallel::pre_processing() {
   internal_order_test();
-
   if (world.rank() == 0) {
     input_ = std::string(reinterpret_cast<char*>(taskData->inputs[0]), taskData->inputs_count[0]);
   }
-  wordCount = 0;
+  word_count = 0;
   return true;
 }
 
@@ -57,15 +75,28 @@ bool TestMPITaskParallel::validation() {
 
 bool TestMPITaskParallel::run() {
   internal_order_test();
-  int inputLength = input_.length();
-  boost::mpi::broadcast(world, inputLength, 0);
+  int input_length = input_.length();
+  boost::mpi::broadcast(world, input_length, 0);
 
   if (world.rank() != 0) {
-    input_.resize(inputLength);
+    input_.resize(input_length);
   }
-  boost::mpi::broadcast(world, input_, 0);
 
-  int totalWords = 0;
+  // array for broadcast
+  char* input_char = new char[input_length + 1];
+  if (world.rank() == 0) {
+    input_.copy(input_char, input_length);
+    input_char[input_length] = '\0';  // ending zero
+  }
+
+  boost::mpi::broadcast(world, input_char, input_length + 1, 0);
+
+  if (world.rank() != 0) {
+    input_.assign(input_char);
+  }
+
+  delete[] input_char;
+
   std::vector<std::string> words;
 
   std::istringstream iss(input_);
@@ -74,42 +105,9 @@ bool TestMPITaskParallel::run() {
     words.push_back(word);
   }
 
-  totalWords = words.size();
-
-  // debug
-  // std::cout << "Process " << world.rank() << ": total_words = " << totalWords << std::endl;
-
-  int localWordsCount = totalWords / world.size();
-  int remainder = totalWords % world.size();
-
-  int start = world.rank() * localWordsCount + std::min(world.rank(), remainder);
-  int end = start + localWordsCount + (world.rank() < remainder ? 1 : 0);
-
-  // debug
-  // std::cout << "Process " << world.rank() << ": start = " << start << ", end = " << end << std::endl;
-
-  // Проверяем, что start и end находятся в пределах words
-  //if (start < 0 || start >= words.size()) {
-  //  std::cerr << "Error: start is out of bounds!" << std::endl;
-  //  return false;
-  //}
-  //if (end < 0 || end > words.size()) {
-  //  std::cerr << "Error: end is out of bounds!" << std::endl;
-  //  return false;
-  //}
-
-  int localWordCount = end - start;
-  if (start < totalWords) {
-    localWordCount =
-        std::count_if(words.begin() + start, words.begin() + end, [](const std::string& w) { return !w.empty(); });
-  } else {
-    localWordCount = 0;
-  }
-
-  // debug
-  // std::cout << "Process " << world.rank() << ": local_word_count = " << localWordCount << std::endl;
-
-  boost::mpi::reduce(world, localWordCount, wordCount, std::plus<int>(), 0);
+  int local_word_count = divideWords(words, world.rank(), world.size());
+  // std::cout << "process " << world.rank() << ": local_word_count = " << local_word_count << std::endl;
+  boost::mpi::reduce(world, local_word_count, word_count, std::plus<>(), 0);
 
   return true;
 }
@@ -117,7 +115,7 @@ bool TestMPITaskParallel::run() {
 bool TestMPITaskParallel::post_processing() {
   internal_order_test();
   if (world.rank() == 0) {
-    reinterpret_cast<int*>(taskData->outputs[0])[0] = wordCount;
+    reinterpret_cast<int*>(taskData->outputs[0])[0] = word_count;
   }
   return true;
 }

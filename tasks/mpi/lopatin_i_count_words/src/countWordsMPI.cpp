@@ -117,6 +117,7 @@ bool TestMPITaskParallel::post_processing() {
   if (world.rank() == 0) {
     reinterpret_cast<int*>(taskData->outputs[0])[0] = word_count;
   }
+  world.barrier();
   return true;
 }
 

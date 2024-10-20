@@ -236,5 +236,4 @@ int main(int argc, char** argv) {
     delete listeners.Release(listeners.default_result_printer());
   }
   return RUN_ALL_TESTS();
-  world.barrier();
 }

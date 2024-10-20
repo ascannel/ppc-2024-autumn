@@ -83,33 +83,37 @@ bool TestMPITaskParallel::run() {
   }
 
   // array for broadcast
-  char* input_char = new char[input_length + 1];
-  if (world.rank() == 0) {
-    input_.copy(input_char, input_length);
-    input_char[input_length] = '\0';  // ending zero
+  std::unique_ptr<char[]> input_char(new char[input_length + 1]);
+  try {
+    if (world.rank() == 0) {
+      input_.copy(input_char.get(), input_length);
+      input_char[input_length] = '\0';  // ending zero
+    }
+
+    boost::mpi::broadcast(world, input_char.get(), input_length + 1, 0);
+
+    if (world.rank() != 0) {
+      input_.assign(input_char.get());
+    }
+
+    std::vector<std::string> words;
+
+    std::istringstream iss(input_);
+    std::string word;
+    while (iss >> word) {
+      words.push_back(word);
+    }
+
+    int local_word_count = divideWords(words, world.rank(), world.size());
+    // std::cout << "process " << world.rank() << ": local_word_count = " << local_word_count << std::endl;
+    boost::mpi::reduce(world, local_word_count, word_count, std::plus<>(), 0);
+
+    return true;
+  } catch (...) {
+    // memory free
+    input_char.reset();
+    throw;
   }
-
-  boost::mpi::broadcast(world, input_char, input_length + 1, 0);
-
-  if (world.rank() != 0) {
-    input_.assign(input_char);
-  }
-
-  delete[] input_char;
-
-  std::vector<std::string> words;
-
-  std::istringstream iss(input_);
-  std::string word;
-  while (iss >> word) {
-    words.push_back(word);
-  }
-
-  int local_word_count = divideWords(words, world.rank(), world.size());
-  // std::cout << "process " << world.rank() << ": local_word_count = " << local_word_count << std::endl;
-  boost::mpi::reduce(world, local_word_count, word_count, std::plus<>(), 0);
-
-  return true;
 }
 
 bool TestMPITaskParallel::post_processing() {
@@ -117,7 +121,6 @@ bool TestMPITaskParallel::post_processing() {
   if (world.rank() == 0) {
     reinterpret_cast<int*>(taskData->outputs[0])[0] = word_count;
   }
-  world.barrier();
   return true;
 }
 
